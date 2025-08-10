@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WikiGraph — Static Wiki + Node Graph</title>
+
+<!-- marked (tiny markdown renderer) -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<style>
+  :root{
+    --bg: #0b0b0d;
+    --panel: rgba(255,255,255,0.03);
+    --muted: #9aa4ad;
+    --accent1: #ff5f6d;
+    --accent2: #ff9966;
+    --link: #ff9c7a;
+    --glass: rgba(255,255,255,0.02);
+    --card-shadow: 0 8px 28px rgba(0,0,0,0.6);
+    --radius: 14px;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+
+  html,body{height:100%;margin:0;background:var(--bg);color:#e9eef2}
+  a{color:var(--link)}
+  .app{max-width:1200px;margin:18px auto;padding:16px;display:grid;grid-template-columns:320px 1fr 300px;gap:16px}
+  .header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .title{display:flex;gap:12px;align-items:center}
+  .title h1{margin:0;font-size:20px}
+  .title .sub{color:var(--muted);font-size:12px}
+  .controls{display:flex;gap:8px;align-items:center}
+  input[type="text"], textarea, .search {
+    background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px;border-radius:8px;color:inherit;
+  }
+
+  button{
+    background:linear-gradient(90deg,var(--accent1),var(--accent2));border:0;padding:8px 10px;border-radius:10px;color:#07060a;font-weight:700;cursor:pointer;
+    box-shadow: var(--card-shadow);
+  }
+  .ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:8px;border-radius:10px;cursor:pointer}
+  .card{background:linear-gradient(180deg,var(--panel),rgba(255,255,255,0.01));border-radius:var(--radius);padding:12px;box-shadow:var(--card-shadow)}
+  .sidebar{height:76vh;overflow:auto}
+  .pages-list{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+  .page-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px}
+  .page-item button{background:transparent;border:0;color:var(--link);cursor:pointer}
+  .page-item .del{color:#ff7b7b}
+  .editor {display:flex;flex-direction:column;gap:8px;height:76vh}
+  .editor .editor-main{display:flex;gap:8px;height:100%}
+  .editor textarea{flex:1;min-height:0;resize:none}
+  .preview{flex:1;overflow:auto;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));border-radius:10px}
+  .meta{display:flex;gap:8px;align-items:center;justify-content:space-between}
+  .graph-canvas{width:100%;height:420px;background:transparent;border-radius:10px;display:block}
+  .small{font-size:12px;color:var(--muted)}
+  .actions{display:flex;gap:8px;align-items:center}
+  code{background:rgba(0,0,0,0.2);padding:2px 6px;border-radius:6px}
+  /* small responsive */
+  @media (max-width:980px){
+    .app{grid-template-columns:1fr; padding:10px}
+    .header{flex-direction:column;align-items:flex-start;gap:8px}
+    .sidebar,.editor,.actions-panel{height:auto}
+    .graph-canvas{height:300px}
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="header">
+    <div class="title">
+      <h1>WikiGraph</h1>
+      <div class="sub">static wiki • localStorage • sidebar graph</div>
+    </div>
+    <div class="controls">
+      <input id="globalSearch" class="search" type="text" placeholder="Search pages..." />
+      <button id="newPageBtn">New</button>
+      <button id="exportBtn" class="ghost">Export</button>
+      <label class="ghost" style="padding:8px 10px;cursor:pointer">
+        Import
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </label>
+    </div>
+  </div>
+
+  <!-- left sidebar with graph + pages -->
+  <aside class="card sidebar">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>Graph</strong> <span class="small">• click nodes</span></div>
+        <div class="small" id="nodeCount"></div>
+      </div>
+      <div id="graphWrap" style="margin-top:8px">
+        <svg id="graphSvg" class="graph-canvas" viewBox="0 0 600 420" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+      <div><strong>Pages</strong></div>
+      <div class="small" id="pagesCount"></div>
+    </div>
+
+    <div class="pages-list" id="pagesList" style="margin-top:8px"></div>
+  </aside>
+
+  <!-- main editor + preview -->
+  <main class="card editor">
+    <div class="meta">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="titleInput" type="text" placeholder="Page title" style="min-width:220px" />
+        <input id="linksInput" type="text" placeholder="comma-separated links" style="min-width:240px" />
+      </div>
+      <div class="actions">
+        <button id="saveBtn">Save</button>
+        <button id="deleteBtn" class="ghost">Delete</button>
+        <button id="previewToggle" class="ghost">Preview</button>
+      </div>
+    </div>
+
+    <div class="editor-main">
+      <textarea id="mdInput" placeholder="# Write markdown..." ></textarea>
+      <div class="preview" id="preview"></div>
+    </div>
+
+    <div class="small" style="text-align:right">Tip: use [[Page Title]] inside markdown for quick-links</div>
+  </main>
+
+  <!-- right sidebar: actions, info -->
+  <aside class="card actions-panel">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <strong>Actions</strong>
+        <div class="small" style="margin-top:6px;color:var(--muted)">Export/import JSON to copy your wiki between browsers or to back it up.</div>
+      </div>
+
+      <div>
+        <strong>Search</strong>
+        <div style="margin-top:6px">
+          <input id="contentSearch" type="text" placeholder="Search page contents..." style="width:100%" />
+        </div>
+      </div>
+
+      <div>
+        <strong>Example Pages</strong>
+        <div class="small" style="margin-top:6px">Home, Guide, About, Sample A, Sample B included as seed pages.</div>
+      </div>
+
+      <div style="margin-top:8px">
+        <strong>Storage</strong>
+        <div class="small" style="margin-top:6px">Saved locally in your browser (<code>localStorage</code>).</div>
+      </div>
+
+      <div style="margin-top:12px;color:var(--muted);font-size:12px">
+        Built for GitHub Pages (static). No server required.
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* Static GitHub-pages-friendly single-file wiki with lightweight graph physics.
+   No build step required. Uses marked (loaded from CDN) for Markdown -> HTML.
+*/
+
+const STORAGE_KEY = 'wikigraph_pages_v1';
+const DEFAULT_PAGES = {
+  "Home": { title: "Home", content: "# Welcome to WikiGraph\nThis is a static wiki demo.\n\n- Click graph nodes to open pages.\n- Edit content and press Save.\n- Use Export / Import to back up your data.", links: ["Guide","About"]},
+  "Guide": { title: "Guide", content: "# Guide\nHow to use this demo:\n\n1. Click pages in sidebar or nodes in the graph.\n2. Edit and Save.\n3. Link pages with the Links field or [[Page Title]] inside content.", links: ["Home","Sample A"]},
+  "About": { title: "About", content: "# About\nStatic wiki + graph demo for GitHub Pages.", links: ["Home"]},
+  "Sample A": { title: "Sample A", content: "# Sample A\nThis links to Sample B.", links: ["Sample B"]},
+  "Sample B": { title: "Sample B", content: "# Sample B\nLinks back to Home.", links: ["Home"]}
+};
+
+function loadPages(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed && typeof parsed === 'object') return parsed;
+    }
+  }catch(e){}
+  return DEFAULT_PAGES;
+}
+function savePages(obj){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); }catch(e){}
+}
+
+let pages = loadPages();
+let active = Object.keys(pages)[0] || null;
+let showPreview = false;
+
+/* DOM refs */
+const pagesList = document.getElementById('pagesList');
+const pagesCount = document.getElementById('pagesCount');
+const nodeCount = document.getElementById('nodeCount');
+const titleInput = document.getElementById('titleInput');
+const mdInput = document.getElementById('mdInput');
+const linksInput = document.getElementById('linksInput');
+const saveBtn = document.getElementById('saveBtn');
+const deleteBtn = document.getElementById('deleteBtn');
+const newPageBtn = document.getElementById('newPageBtn');
+const exportBtn = document.getElementById('exportBtn');
+const importFile = document.getElementById('importFile');
+const previewEl = document.getElementById('preview');
+const previewToggle = document.getElementById('previewToggle');
+const globalSearch = document.getElementById('globalSearch');
+const contentSearch = document.getElementById('contentSearch');
+
+const svg = document.getElementById('graphSvg');
+let svgW = 600, svgH = 420;
+
+/* Graph physics state */
+const nodeState = {}; // id -> {x,y,vx,vy}
+let links = [];       // array of {source,target}
+
+/* Utils */
+function escapeHtml(s){ return s.replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+/* Rendering functions */
+function rebuildLinks(){
+  links = [];
+  const keys = Object.keys(pages);
+  keys.forEach(k=>{
+    const ls = pages[k].links || [];
+    ls.forEach(t=>{
+      if(pages[t]) links.push({ source: k, target: t });
+    });
+  });
+}
+
+function initNodePositions(){
+  const keys = Object.keys(pages);
+  // keep existing positions, add new nodes
+  keys.forEach((k,i)=>{
+    if(!nodeState[k]){
+      nodeState[k] = {
+        x: (svgW/2) + (Math.random()-0.5)*Math.min(200, svgW*0.4),
+        y: (svgH/2) + (Math.random()-0.5)*Math.min(160, svgH*0.35),
+        vx:0, vy:0
+      };
+    }
+  });
+  // remove nodes no longer present
+  Object.keys(nodeState).forEach(k=>{ if(!pages[k]) delete nodeState[k]; });
+}
+
+function renderPagesList(filter=''){
+  pagesList.innerHTML = '';
+  const keys = Object.keys(pages).sort((a,b)=>a.localeCompare(b));
+  pagesCount.textContent = keys.length;
+  const q = filter.trim().toLowerCase();
+  keys.forEach(k=>{
+    if(q && !k.toLowerCase().includes(q) && !((pages[k].content||'').toLowerCase().includes(q))) return;
+    const item = document.createElement('div');
+    item.className = 'page-item';
+    const btn = document.createElement('button');
+    btn.textContent = k;
+    btn.onclick = ()=>openPage(k);
+    const right = document.createElement('div');
+    right.style.display='flex'; right.style.gap='6px'; right.style.alignItems='center';
+    const editBtn = document.createElement('button'); editBtn.textContent='Edit'; editBtn.onclick = (e)=>{ e.stopPropagation(); openPage(k); focusEditor(); };
+    const delBtn = document.createElement('button'); delBtn.textContent='Del'; delBtn.className='del'; delBtn.onclick = (e)=>{ e.stopPropagation(); deletePageConfirm(k); };
+    right.appendChild(editBtn); right.appendChild(delBtn);
+    item.appendChild(btn); item.appendChild(right);
+    pagesList.appendChild(item);
+  });
+}
+
+function openPage(name){
+  if(!pages[name]) return;
+  active = name;
+  titleInput.value = pages[name].title || name;
+  mdInput.value = pages[name].content || '';
+  linksInput.value = (pages[name].links || []).join(', ');
+  renderPreview();
+  renderPagesList(globalSearch.value || '');
+  highlightActive();
+}
+
+function highlightActive(){
+  // simple highlight by adding bold to current page in list
+  Array.from(pagesList.children).forEach(div=>{
+    const btn = div.querySelector('button');
+    if(btn && btn.textContent === active) div.style.background = 'rgba(255,255,255,0.03)'; else div.style.background='';
+  });
+}
+
+/* Preview and tiny link parsing */
+function renderPreview(){
+  const md = mdInput.value || '';
+  // convert [[Page Title]] -> <a data-quick="Page Title">Page Title</a>
+  const processed = md.replace(/\[\[(.+?)\]\]/g, (m,p1)=>`[${p1}](wiki:///${encodeURIComponent(p1)})`);
+  try{
+    previewEl.innerHTML = marked.parse(processed);
+  }catch(e){
+    previewEl.textContent = md;
+  }
+  // wire quick-link clicks inside preview
+  Array.from(previewEl.querySelectorAll('a')).forEach(a=>{
+    const href = a.getAttribute('href') || '';
+    if(href.startsWith('wiki:///')){
+      a.addEventListener('click', (ev)=>{ ev.preventDefault(); const nm = decodeURIComponent(href.replace('wiki:///','')); if(pages[nm]) openPage(nm); else { createAndOpen(nm); } });
+      a.style.color = 'var(--link)';
+    } else {
+      a.setAttribute('target','_blank');
+    }
+  });
+}
+
+/* Save / create / delete */
+function saveCurrent(){
+  const title = (titleInput.value || '').trim() || 'Untitled';
+  const content = mdInput.value || '';
+  const linksArr = (linksInput.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  // rename detection
+  if(active && title !== active){
+    // remove old key, but preserve other pages linking to it
+    delete pages[active];
+  }
+  pages[title] = { title, content, links: linksArr };
+  savePages(pages);
+  rebuildLinks();
+  initNodePositions();
+  openPage(title);
+  renderGraphImmediate();
+  renderPagesList(globalSearch.value || '');
+}
+
+function createPage(){
+  let base = 'New Page', i=1, title=base;
+  while(pages[title]){ i++; title = base + ' ' + i; }
+  pages[title] = { title, content: '# New Page', links: [] };
+  savePages(pages);
+  rebuildLinks(); initNodePositions(); openPage(title); renderPagesList();
+}
+
+function createAndOpen(name){
+  pages[name] = { title: name, content: `# ${name}`, links: [] };
+  savePages(pages); rebuildLinks(); initNodePositions(); openPage(name); renderPagesList();
+}
+
+function deletePageConfirm(name){
+  if(!confirm(`Delete page "${name}"? This action cannot be undone in this demo.`)) return;
+  delete pages[name];
+  // remove links to it
+  Object.keys(pages).forEach(k=>{ pages[k].links = (pages[k].links||[]).filter(x=>x!==name); });
+  savePages(pages); rebuildLinks(); initNodePositions();
+  const keys = Object.keys(pages);
+  openPage(keys[0] || '');
+  renderPagesList(globalSearch.value || '');
+  renderGraphImmediate();
+}
+
+/* Export / Import */
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(pages, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'wikigraph-pages.json';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function handleImportFile(file){
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = (e)=>{
+    try{
+      const obj = JSON.parse(e.target.result);
+      if(obj && typeof obj === 'object'){
+        pages = obj;
+        savePages(pages); rebuildLinks(); initNodePositions(); openPage(Object.keys(pages)[0]||''); renderPagesList(); renderGraphImmediate();
+      } else alert('Imported file does not contain a valid pages object.');
+    }catch(err){ alert('Failed to parse JSON: '+ (err && err.message ? err.message : String(err))); }
+  };
+  r.readAsText(file);
+}
+
+/* Graph rendering + physics (lightweight) */
+const config = { stiffness: 0.12, repulsion: 900, damping: 0.82, desiredLen: 110 };
+
+function ticksPhysics(){
+  const ids = Object.keys(nodeState);
+  // apply link springs
+  links.forEach(l=>{
+    const a = nodeState[l.source];
+    const b = nodeState[l.target];
+    if(!a || !b) return;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const force = (dist - config.desiredLen) * config.stiffness;
+    const fx = (dx/dist) * force, fy = (dy/dist) * force;
+    a.vx += fx; a.vy += fy;
+    b.vx -= fx; b.vy -= fy;
+  });
+  // repulsion
+  for(let i=0;i<ids.length;i++){
+    for(let j=i+1;j<ids.length;j++){
+      const a = nodeState[ids[i]], b = nodeState[ids[j]];
+      if(!a||!b) continue;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dist = Math.sqrt(dx*dx+dy*dy) || 1;
+      const f = config.repulsion / (dist*dist);
+      const fx = (dx/dist) * f, fy = (dy/dist) * f;
+      a.vx -= fx; a.vy -= fy;
+      b.vx += fx; b.vy += fy;
+    }
+  }
+  // integrate & bounds
+  ids.forEach(k=>{
+    const n = nodeState[k];
+    n.vx *= config.damping; n.vy *= config.damping;
+    n.x += n.vx * 0.03; n.y += n.vy * 0.03;
+    n.x = Math.max(24, Math.min(svgW - 24, n.x));
+    n.y = Math.max(24, Math.min(svgH - 24, n.y));
+  });
+}
+
+let rafId = null;
+function animate(){
+  ticksPhysics();
+  renderGraph();
+  rafId = requestAnimationFrame(animate);
+}
+
+/* Render SVG once per frame */
+function renderGraph(){
+  // clear
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  // lines
+  links.forEach((l, idx)=>{
+    const a = nodeState[l.source] || {x:svgW/2,y:svgH/2}, b = nodeState[l.target] || {x:svgW/2,y:svgH/2};
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',a.y); line.setAttribute('x2',b.x); line.setAttribute('y2',b.y);
+    line.setAttribute('stroke','rgba(255,255,255,0.06)'); line.setAttribute('stroke-width','1');
+    svg.appendChild(line);
+  });
+  // nodes
+  Object.keys(nodeState).forEach((id)=>{
+    const n = nodeState[id];
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('transform',`translate(${n.x},${n.y})`);
+    g.style.cursor = 'pointer';
+    // circle
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('r', 16); c.setAttribute('fill','url(#ggrad)'); c.setAttribute('stroke','rgba(255,255,255,0.06)');
+    g.appendChild(c);
+    // text
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x',0); t.setAttribute('y',4); t.setAttribute('text-anchor','middle');
+    t.setAttribute('fill','#07060a'); t.setAttribute('font-weight','700'); t.setAttribute('font-size','11');
+    t.textContent = id;
+    g.appendChild(t);
+    // interaction
+    g.addEventListener('click',(e)=>{ e.stopPropagation(); openPage(id); });
+    // drag
+    let dragging=false, sx=0, sy=0;
+    g.addEventListener('pointerdown', (ev)=>{ dragging=true; sx=ev.clientX; sy=ev.clientY; g.setPointerCapture(ev.pointerId); });
+    window.addEventListener('pointermove', (ev)=>{ if(!dragging) return; const dx = ev.clientX - sx, dy = ev.clientY - sy; n.x += dx; n.y += dy; n.vx = 0; n.vy = 0; sx = ev.clientX; sy = ev.clientY; renderGraph(); });
+    g.addEventListener('pointerup', (ev)=>{ dragging=false; try{ g.releasePointerCapture(ev.pointerId);}catch(e){} });
+    svg.appendChild(g);
+  });
+  // defs gradient
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  const grad = document.createElementNS('http://www.w3.org/2000/svg','linearGradient');
+  grad.setAttribute('id','ggrad'); grad.setAttribute('x1','0'); grad.setAttribute('x2','1');
+  const stop1 = document.createElementNS('http://www.w3.org/2000/svg','stop'); stop1.setAttribute('offset','0%'); stop1.setAttribute('stop-color',getComputedStyle(document.documentElement).getPropertyValue('--accent1') || '#ff5f6d');
+  const stop2 = document.createElementNS('http://www.w3.org/2000/svg','stop'); stop2.setAttribute('offset','100%'); stop2.setAttribute('stop-color',getComputedStyle(document.documentElement).getPropertyValue('--accent2') || '#ff9966');
+  grad.appendChild(stop1); grad.appendChild(stop2); defs.appendChild(grad); svg.appendChild(defs);
+
+  nodeCount.textContent = Object.keys(nodeState).length;
+}
+
+/* Render immediate snapshot (no waiting for RAF) */
+function renderGraphImmediate(){
+  if(!rafId) { renderGraph(); }
+}
+
+/* Resize handling */
+function syncSvgSize(){
+  const rect = document.getElementById('graphWrap').getBoundingClientRect();
+  svgW = Math.max(300, Math.round(rect.width));
+  svgH = Math.max(200, Math.round(rect.height));
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+}
+
+/* Wiring UI events */
+saveBtn.addEventListener('click', saveCurrent);
+newPageBtn.addEventListener('click', createPage);
+exportBtn.addEventListener('click', exportJSON);
+importFile.addEventListener('change', (e)=> handleImportFile(e.target.files && e.target.files[0]));
+previewToggle.addEventListener('click', ()=>{
+  showPreview = !showPreview;
+  previewEl.style.display = showPreview ? 'block' : 'none';
+  mdInput.style.display = showPreview ? 'none' : 'block';
+  previewToggle.textContent = showPreview ? 'Edit' : 'Preview';
+});
+deleteBtn.addEventListener('click', ()=>{ if(active) deletePageConfirm(active); });
+globalSearch.addEventListener('input', ()=> renderPagesList(globalSearch.value || ''));
+contentSearch.addEventListener('input', ()=> renderPagesList(contentSearch.value || ''));
+
+/* live preview while typing (debounced small) */
+let previewTimer = null;
+mdInput.addEventListener('input', ()=>{
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(renderPreview, 250);
+});
+
+/* initial boot */
+function boot(){
+  rebuildLinks(); initNodePositions(); renderPagesList(); openPage(active || Object.keys(pages)[0] || '');
+  // size sync
+  syncSvgSize();
+  window.addEventListener('resize', ()=>{ syncSvgSize(); renderGraphImmediate(); });
+  // start physics animation
+  if(!rafId){ rafId = requestAnimationFrame(animate); }
+}
+
+/* import via top-level controls */
+document.getElementById('exportBtn').addEventListener('click', exportJSON);
+document.getElementById('newPageBtn').addEventListener('click', createPage);
+importFile.addEventListener('change', (e)=> handleImportFile(e.target.files && e.target.files[0]));
+document.getElementById('globalSearch').addEventListener('input', ()=> renderPagesList(globalSearch.value));
+
+/* populate initial UI */
+boot();
+renderPreview();
+</script>
+</body>
+</html>
