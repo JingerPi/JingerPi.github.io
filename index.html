@@ -2,37 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Wiki Graph</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
 <style>
   body {
-    margin: 0;
-    font-family: 'Inter', sans-serif;
-    background-color: #121212;
-    color: #eee;
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
+    margin: 0; font-family: 'Inter', sans-serif; background-color: #121212; color: #eee;
+    display: flex; height: 100vh; overflow: hidden;
   }
   #sidebar {
-    width: 300px;
-    background: #1e1e1e;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
+    width: 300px; background: #1e1e1e; padding: 1rem; display: flex; flex-direction: column;
     box-sizing: border-box;
   }
   #graph {
-    flex: 1;
-    background: #1a1a1a;
-    border-radius: 8px;
-    overflow: hidden;
+    flex: 1; background: #1a1a1a; border-radius: 8px; overflow: hidden;
   }
   #content {
-    flex: 1;
-    padding: 1rem;
-    overflow-y: auto;
+    flex: 1; padding: 1rem; overflow-y: auto;
   }
   button, input {
     background: linear-gradient(135deg, coral, hotpink);
@@ -62,142 +48,193 @@
     overflow-y: auto;
   }
   #recentList li {
-    color: #hotpink;
     list-style: none;
     margin: 0.25rem 0;
-  }
-  #recentList a {
-    color: #hotpink;
   }
 </style>
 </head>
 <body>
-<div id="sidebar">
-  <h2>Wiki Graph</h2>
-  <input id="search" placeholder="Search..." />
-  <ul id="recentList"></ul>
-  <svg id="graph" width="100%" height="400"></svg>
-</div>
-<div id="content">
-  <h1 id="pageTitle"></h1>
-  <div id="pageBody"></div>
-</div>
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script>
-  const pages = {
-    Home: { title: "Home", body: "<p>Welcome to the wiki graph!</p>", links: ["About", "Contact"] },
-    About: { title: "About", body: "<p>This is a demo wiki site.</p>", links: ["Home"] },
-    Contact: { title: "Contact", body: "<p>Email us at example@example.com</p>", links: ["Home"] }
-  };
-  let currentPage = "Home";
-  let recentPages = [];
+  <div id="sidebar">
+    <h2>Wiki Graph</h2>
+    <input id="search" placeholder="Search pages..." autocomplete="off" />
+    <ul id="recentList"></ul>
+    <svg id="graph" width="100%" height="400"></svg>
+  </div>
+  <div id="content">
+    <h1 id="pageTitle"></h1>
+    <div id="pageBody"></div>
+    <div id="pageLinks"></div>
+  </div>
 
-  function renderRecent() {
-    const list = document.getElementById("recentList");
-    list.innerHTML = recentPages.map(p => `<li><a href="#" data-link="${p}">${p}</a></li>`).join("");
-    list.querySelectorAll('[data-link]').forEach(a => {
-      a.onclick = e => {
-        e.preventDefault();
-        renderPage(a.dataset.link);
-      };
-    });
-  }
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    // Define available pages (content files)
+    const pageFiles = {
+      Home: "pages/home.html",
+      About: "pages/about.html",
+      Contact: "pages/contact.html"
+    };
 
-  function renderPage(name) {
-    const page = pages[name];
-    if (!page) return;
-    currentPage = name;
-    if (!recentPages.includes(name)) {
-      recentPages.unshift(name);
-      if (recentPages.length > 5) recentPages.pop();
+    let currentPage = "Home";
+    let recentPages = [];
+
+    // Fetch page content from file and render it
+    async function renderPage(name) {
+      if (!pageFiles[name]) {
+        alert("Page not found: " + name);
+        return;
+      }
+      currentPage = name;
+
+      // Fetch page content HTML snippet
+      const res = await fetch(pageFiles[name]);
+      if (!res.ok) {
+        alert("Failed to load page content: " + name);
+        return;
+      }
+      const text = await res.text();
+
+      // Parse fetched HTML snippet into a temporary container
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = text.trim();
+
+      // Extract title, body, and links from snippet
+      const title = tempDiv.querySelector("h1")?.textContent || name;
+      const bodyHTML = tempDiv.querySelector("#body")?.innerHTML || "";
+      const links = Array.from(tempDiv.querySelectorAll("#links a")).map(a => ({
+        name: a.textContent,
+        href: a.getAttribute("href")
+      }));
+
+      // Update recent pages list
+      if (!recentPages.includes(name)) {
+        recentPages.unshift(name);
+        if (recentPages.length > 5) recentPages.pop();
+      }
       renderRecent();
-    }
-    document.getElementById("pageTitle").innerHTML = page.title;
-    document.getElementById("pageBody").innerHTML = page.body + "<h3>Links</h3><ul>" + page.links.map(l => `<li><a href="#" data-link="${l}">${l}</a></li>`).join("") + "</ul>";
-    document.querySelectorAll('[data-link]').forEach(a => {
-      a.onclick = e => {
-        e.preventDefault();
-        renderPage(a.dataset.link);
-      };
-    });
-    drawGraph();
-  }
 
-  function drawGraph() {
-    const svg = d3.select("#graph");
-    svg.selectAll("*").remove();
-    const nodes = Object.keys(pages).map(k => ({ id: k }));
-    const links = [];
-    Object.values(pages).forEach(p => {
-      p.links.forEach(l => {
-        if (pages[l]) links.push({ source: p.title, target: l });
+      // Update page content on the main page
+      document.getElementById("pageTitle").textContent = title;
+      document.getElementById("pageBody").innerHTML = bodyHTML;
+
+      // Render links section
+      const linksDiv = document.getElementById("pageLinks");
+      if (links.length > 0) {
+        linksDiv.innerHTML = "<h3>Links</h3><ul>" +
+          links.map(l => `<li><a href="#" data-link="${l.name}">${l.name}</a></li>`).join("") +
+          "</ul>";
+      } else {
+        linksDiv.innerHTML = "";
+      }
+
+      // Setup link click handlers
+      linksDiv.querySelectorAll("a[data-link]").forEach(a => {
+        a.addEventListener("click", e => {
+          e.preventDefault();
+          renderPage(a.dataset.link);
+        });
       });
-    });
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(80))
-      .force("charge", d3.forceManyBody().strength(-200))
-      .force("center", d3.forceCenter(150, 200));
-    const link = svg.append("g")
-      .attr("stroke", "#888")
-      .selectAll("line")
-      .data(links)
-      .enter().append("line");
-    const node = svg.append("g")
-      .selectAll("circle")
-      .data(nodes)
-      .enter().append("circle")
-      .attr("r", 12)
-      .attr("fill", d => d.id === currentPage ? "coral" : "hotpink")
-      .call(drag(simulation))
-      .on("click", (e, d) => renderPage(d.id));
-    const label = svg.append("g")
-      .selectAll("text")
-      .data(nodes)
-      .enter().append("text")
-      .text(d => d.id)
-      .attr("font-size", "10px")
-      .attr("fill", "#fff");
-    simulation.on("tick", () => {
-      link.attr("x1", d => d.source.x)
+
+      drawGraph();
+    }
+
+    function renderRecent() {
+      const list = document.getElementById("recentList");
+      list.innerHTML = recentPages.map(p => `<li><a href="#" data-link="${p}">${p}</a></li>`).join("");
+      list.querySelectorAll("a[data-link]").forEach(a => {
+        a.onclick = e => {
+          e.preventDefault();
+          renderPage(a.dataset.link);
+        };
+      });
+    }
+
+    function drawGraph() {
+      const svg = d3.select("#graph");
+      svg.selectAll("*").remove();
+
+      // Simple graph structure from pageFiles and their links
+      // We'll fetch links from each page dynamically (or predefine them here)
+
+      // For simplicity, predefine links:
+      const pages = {
+        Home: ["About", "Contact"],
+        About: ["Home"],
+        Contact: ["Home"]
+      };
+
+      const nodes = Object.keys(pages).map(k => ({ id: k }));
+      const links = [];
+      Object.entries(pages).forEach(([source, targets]) => {
+        targets.forEach(target => {
+          links.push({ source, target });
+        });
+      });
+
+      const simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(80))
+        .force("charge", d3.forceManyBody().strength(-200))
+        .force("center", d3.forceCenter(150, 200));
+
+      const link = svg.append("g")
+        .attr("stroke", "#888")
+        .selectAll("line")
+        .data(links)
+        .enter().append("line");
+
+      const node = svg.append("g")
+        .selectAll("circle")
+        .data(nodes)
+        .enter().append("circle")
+        .attr("r", 12)
+        .attr("fill", d => d.id === currentPage ? "coral" : "hotpink")
+        .call(d3.drag()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x; d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          })
+        )
+        .on("click", (event, d) => {
+          renderPage(d.id);
+        });
+
+      const label = svg.append("g")
+        .selectAll("text")
+        .data(nodes)
+        .enter().append("text")
+        .text(d => d.id)
+        .attr("font-size", "10px")
+        .attr("fill", "#fff");
+
+      simulation.on("tick", () => {
+        link.attr("x1", d => d.source.x)
           .attr("y1", d => d.source.y)
           .attr("x2", d => d.target.x)
           .attr("y2", d => d.target.y);
-      node.attr("cx", d => d.x)
+        node.attr("cx", d => d.x)
           .attr("cy", d => d.y);
-      label.attr("x", d => d.x + 14)
-           .attr("y", d => d.y + 4);
+        label.attr("x", d => d.x + 14)
+          .attr("y", d => d.y + 4);
+      });
+    }
+
+    // Search input filter
+    document.getElementById("search").addEventListener("input", e => {
+      const val = e.target.value.toLowerCase();
+      const filtered = Object.keys(pageFiles).filter(p => p.toLowerCase().includes(val));
+      recentPages = filtered;
+      renderRecent();
     });
-  }
 
-  function drag(simulation) {
-    function dragstarted(event, d) {
-      if (!event.active) simulation.alphaTarget(0.3).restart();
-      d.fx = d.x;
-      d.fy = d.y;
-    }
-    function dragged(event, d) {
-      d.fx = event.x;
-      d.fy = event.y;
-    }
-    function dragended(event, d) {
-      if (!event.active) simulation.alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
-    }
-    return d3.drag()
-      .on("start", dragstarted)
-      .on("drag", dragged)
-      .on("end", dragended);
-  }
-
-  document.getElementById("search").oninput = e => {
-    const val = e.target.value.toLowerCase();
-    const foundPages = Object.keys(pages).filter(p => p.toLowerCase().includes(val));
-    recentPages = foundPages;
-    renderRecent();
-  };
-
-  renderPage(currentPage);
-</script>
+    // Load initial page
+    renderPage(currentPage);
+  </script>
 </body>
 </html>
