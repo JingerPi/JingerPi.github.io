@@ -54,11 +54,15 @@
 
   <script>
     function handlePosts(data) {
-      const container = document.getElementById('posts');
-      if (!data.response || !data.response.posts || data.response.posts.length === 0) {
-        container.textContent = 'No posts found with that tag.';
-        return;
-      }
+  const container = document.getElementById('posts');
+  if (!data || !data.meta || data.meta.status !== 200) {
+    container.textContent = 'Error loading posts from Tumblr API.';
+    return;
+  }
+  if (!data.response || !Array.isArray(data.response.posts) || data.response.posts.length === 0) {
+    container.textContent = 'No posts found with that tag.';
+    return;
+  }
       container.innerHTML = '';
 
       data.response.posts.forEach(post => {
