@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blog</title>
+<style>
+  body {
+    background-color: #121212;
+    color: #eee;
+    font-family: sans-serif;
+    padding: 20px;
+    max-width: 800px;
+    margin: auto;
+  }
+  h1, h3, a {
+    color: coral;
+  }
+  a {
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  .post {
+    border-bottom: 1px solid #444;
+    margin-bottom: 1em;
+    padding-bottom: 1em;
+  }
+</style>
+</head>
+<body>
+  <h1>Blog</h1>
+  <div id="posts">Loading blog posts...</div>
+
+<script>
+const apiKey = "TtsXH6vmq96mJjcYR5I0Sxh2TXpD2bD6Jg2g70o6sIMk3cJa5S";
+const blogName = "jingeri";
+const tag = "self post";
+
+fetch(`https://api.tumblr.com/v2/tagged?tag=${encodeURIComponent(tag)}&api_key=${apiKey}`)
+  .then(res => res.json())
+  .then(data => {
+    const posts = data.response.filter(p => p.blog_name === blogName);
+    const container = document.getElementById("posts");
+
+    if (posts.length === 0) {
+      container.innerHTML = "<p>No posts found.</p>";
+      return;
+    }
+
+    container.innerHTML = posts.map(post => {
+      const title = post.title || post.summary || "(untitled)";
+      const body = post.body || "";
+      return `
+        <div class="post">
+          <h3><a href="${post.post_url}" target="_blank">${title}</a></h3>
+          <div>${body}</div>
+        </div>
+      `;
+    }).join("");
+  })
+  .catch(err => {
+    console.error("Tumblr API error", err);
+    document.getElementById("posts").innerHTML = "<p>Error loading posts.</p>";
+  });
+</script>
+</body>
+</html>
