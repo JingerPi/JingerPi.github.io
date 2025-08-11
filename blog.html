@@ -1,29 +1,147 @@
-<script>
-  function handlePosts(data) {
-    const container = document.getElementById('posts');
-    if (!data.response || !data.response.posts || data.response.posts.length === 0) {
-      container.textContent = 'No posts found with that tag.';
-      return;
-    }
-    container.innerHTML = '';
-    data.response.posts.forEach(post => {
-      const div = document.createElement('div');
-      div.className = 'post';
-
-      const title = post.title || post.summary || 'Untitled post';
-      const content = post.body || post.caption || (post.trail && post.trail[0]?.content) || '';
-      const date = new Date(post.date).toLocaleDateString();
-
-      div.innerHTML = `
-        <h2>${title}</h2>
-        <p>${content}</p>
-        <time>Posted on ${date}</time>
-      `;
-      container.appendChild(div);
-    });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Blog - Jingeri Tumblr Posts</title>
+<style>
+  body {
+    background: #121212;
+    color: #eee;
+    font-family: 'Inter', sans-serif;
+    padding: 1rem;
+    max-width: 700px;
+    margin: auto;
   }
+  h1 {
+    color: coral;
+    margin-bottom: 1rem;
+  }
+  .post {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #333;
+  }
+  .post h2 {
+    margin: 0 0 0.5rem;
+    color: hotpink;
+  }
+  .post p {
+    margin: 0 0 0.5rem;
+    line-height: 1.4;
+  }
+  .post time {
+    font-size: 0.8rem;
+    color: #999;
+  }
+  .post img {
+    max-width: 100%;
+    border-radius: 6px;
+    margin: 0.5rem 0;
+  }
+  a {
+    color: hotpink;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+  <h1>Posts tagged "self post"</h1>
+  <div id="posts">Loading posts...</div>
 
-  const script = document.createElement('script');
-  script.src = "https://api.tumblr.com/v2/blog/jingeri.tumblr.com/posts?api_key=TtsXH6vmq96mJjcYR5I0Sxh2TXpD2bD6Jg2g70o6sIMk3cJa5S&tag=self%20post&callback=handlePosts";
-  document.body.appendChild(script);
-</script>
+  <script>
+    function handlePosts(data) {
+      const container = document.getElementById('posts');
+      if (!data.response || !data.response.posts || data.response.posts.length === 0) {
+        container.textContent = 'No posts found with that tag.';
+        return;
+      }
+      container.innerHTML = '';
+
+      data.response.posts.forEach(post => {
+        const div = document.createElement('div');
+        div.className = 'post';
+
+        // Title fallback
+        const title = post.title || post.summary || 'Untitled post';
+
+        // Format post date nicely
+        const date = new Date(post.date).toLocaleDateString(undefined, {
+          year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        // Build post content depending on post type
+        let contentHTML = '';
+
+        switch(post.type) {
+          case 'text':
+            // Use 'body' or fallback to summary
+            contentHTML = post.body || post.summary || '';
+            break;
+          case 'photo':
+            // Show photos and caption
+            if (post.photos && post.photos.length > 0) {
+              post.photos.forEach(photo => {
+                // Use the largest available photo url
+                const photoURL = photo.original_size.url;
+                contentHTML += `<img src="${photoURL}" alt="Photo post image" />`;
+              });
+            }
+            if (post.caption) {
+              contentHTML += post.caption;
+            }
+            break;
+          case 'quote':
+            contentHTML = `<blockquote>${post.text || ''}</blockquote>`;
+            if (post.source) {
+              contentHTML += `<p>— ${post.source}</p>`;
+            }
+            break;
+          case 'link':
+            contentHTML = `<p><a href="${post.url}" target="_blank" rel="noopener">${post.title || post.url}</a></p>`;
+            if (post.description) {
+              contentHTML += `<p>${post.description}</p>`;
+            }
+            break;
+          case 'chat':
+            if (post.body) {
+              contentHTML = post.body;
+            }
+            break;
+          case 'video':
+            if (post.player && post.player.length > 0) {
+              // Usually an array of player embeds in different sizes
+              contentHTML = post.player[post.player.length - 1].embed_code || '';
+            } else if (post.embed_code) {
+              contentHTML = post.embed_code;
+            }
+            if (post.caption) {
+              contentHTML += post.caption;
+            }
+            break;
+          default:
+            contentHTML = post.body || post.caption || post.summary || '';
+            break;
+        }
+
+        // Compose post HTML
+        div.innerHTML = `
+          <h2><a href="${post.post_url}" target="_blank" rel="noopener">${title}</a></h2>
+          <div>${contentHTML}</div>
+          <time>Posted on ${date}</time>
+        `;
+
+        container.appendChild(div);
+      });
+    }
+
+    // Insert JSONP script for Tumblr API with callback handlePosts
+    const script = document.createElement('script');
+    script.src = "https://api.tumblr.com/v2/blog/jingeri.tumblr.com/posts?api_key=TtsXH6vmq96mJjcYR5I0Sxh2TXpD2bD6Jg2g70o6sIMk3cJa5S&tag=self%20post&callback=handlePosts";
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>
