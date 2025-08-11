@@ -72,7 +72,8 @@
     const pageFiles = {
       Home: "pages/home.html",
       About: "pages/about.html",
-      Contact: "pages/contact.html"
+      Contact: "pages/contact.html",
+      Rreading_list: "pages/reading_list.html"
     };
 
     let currentPage = "Home";
@@ -160,7 +161,8 @@
       const pages = {
         Home: ["About", "Contact"],
         About: ["Home"],
-        Contact: ["Home"]
+        Contact: ["Home"],
+        Reading_list: ["Home", "About"]
       };
 
       const nodes = Object.keys(pages).map(k => ({ id: k }));
