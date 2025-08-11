@@ -73,7 +73,9 @@
       Home: "pages/home.html",
       About: "pages/about.html",
       Contact: "pages/contact.html",
-      "Reading list": "pages/reading_list.html"
+      "Reading list": "pages/reading_list.html",
+      Blog: "pages/blog.html"
+
     };
 
     let currentPage = "Home";
@@ -162,7 +164,8 @@
         Home: ["About", "Contact"],
         About: ["Home"],
         Contact: ["Home"],
-        "Reading list": ["Home", "About"]
+        "Reading list": ["Home", "About"],
+        Blog: ["About"]
       };
 
       const nodes = Object.keys(pages).map(k => ({ id: k }));
