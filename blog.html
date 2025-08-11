@@ -1,70 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Blog - Jingeri Tumblr Posts</title>
-<style>
-  body {
-    background: #121212;
-    color: #eee;
-    font-family: 'Inter', sans-serif;
-    padding: 1rem;
-  }
-  h1 {
-    color: coral;
-  }
-  .post {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #333;
-  }
-  .post h2 {
-    margin: 0 0 0.5rem;
-    color: hotpink;
-  }
-  .post p {
-    margin: 0 0 0.5rem;
-  }
-  .post time {
-    font-size: 0.8rem;
-    color: #999;
-  }
-</style>
-</head>
-<body>
-  <h1>Posts tagged "self post"</h1>
-  <div id="posts">Loading posts...</div>
-
-  <script>
-    function handlePosts(data) {
-      const container = document.getElementById('posts');
-      if (!data.response || data.response.posts.length === 0) {
-        container.textContent = 'No posts found with that tag.';
-        return;
-      }
-      container.innerHTML = '';
-      data.response.posts.forEach(post => {
-        const div = document.createElement('div');
-        div.className = 'post';
-        const title = post.summary || post.title || 'Untitled post';
-        // Extract post content safely, fallback to empty string if undefined
-        const content = post.body || post.caption || '';
-        const date = new Date(post.date).toLocaleDateString();
-
-        div.innerHTML = `
-          <h2>${title}</h2>
-          <p>${content}</p>
-          <time>Posted on ${date}</time>
-        `;
-        container.appendChild(div);
-      });
+<script>
+  function handlePosts(data) {
+    const container = document.getElementById('posts');
+    if (!data.response || !data.response.posts || data.response.posts.length === 0) {
+      container.textContent = 'No posts found with that tag.';
+      return;
     }
+    container.innerHTML = '';
+    data.response.posts.forEach(post => {
+      const div = document.createElement('div');
+      div.className = 'post';
 
-    // Create the JSONP script tag
-    const script = document.createElement('script');
-    script.src = "https://api.tumblr.com/v2/blog/jingeri.tumblr.com/posts?api_key=TtsXH6vmq96mJjcYR5I0Sxh2TXpD2bD6Jg2g70o6sIMk3cJa5S&tag=self%20post&callback=handlePosts";
-    document.body.appendChild(script);
-  </script>
-</body>
-</html>
+      const title = post.title || post.summary || 'Untitled post';
+      const content = post.body || post.caption || (post.trail && post.trail[0]?.content) || '';
+      const date = new Date(post.date).toLocaleDateString();
+
+      div.innerHTML = `
+        <h2>${title}</h2>
+        <p>${content}</p>
+        <time>Posted on ${date}</time>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  const script = document.createElement('script');
+  script.src = "https://api.tumblr.com/v2/blog/jingeri.tumblr.com/posts?api_key=TtsXH6vmq96mJjcYR5I0Sxh2TXpD2bD6Jg2g70o6sIMk3cJa5S&tag=self%20post&callback=handlePosts";
+  document.body.appendChild(script);
+</script>
